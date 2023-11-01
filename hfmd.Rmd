@@ -25,6 +25,8 @@ data_folder <- "~/Library/CloudStorage/OneDrive-OxfordUniversityClinicalResearch
 library(readxl)
 library(dplyr)
 library(stringr)
+library(purrr)
+library(tidyr)
 ```
 
 
@@ -39,7 +41,8 @@ read_excel2 <- function(x, ...) {
     str_remove("\\)") |>
     str_replace("...12", "month") |>
     str_replace("...13", "year") %>%
-    setNames(out, .)
+    setNames(out, .) |> 
+    filter(! is.na(Participant_No))
 }
 ```
 
@@ -47,7 +50,14 @@ read_excel2 <- function(x, ...) {
 ## Loading data
 
 ```{r}
-dec22 <- read_excel2("20FL_CH1_001_06_Dec2022.xls")
-apr23 <- read_excel2("20FL_CH1_001_07_Apr2023.xlsx")
+sero <- data_folder |>
+  dir() |> 
+  map_dfr(read_excel2)
+```
+
+```{r}
+sero |> 
+  mutate(across(Neutralization, ~ .x == "Yes")) |> 
+  replace_na(list(Neutralization = FALSE))
 ```
 
