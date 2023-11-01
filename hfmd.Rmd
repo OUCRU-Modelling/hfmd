@@ -9,3 +9,45 @@ editor_options:
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+
+## Constants
+
+Data folder:
+
+```{r}
+data_folder <- "~/Library/CloudStorage/OneDrive-OxfordUniversityClinicalResearchUnit/GitHub/OUCRU-Modelling/hfmd/"
+```
+
+
+## Packages
+
+```{r}
+library(readxl)
+library(dplyr)
+library(stringr)
+```
+
+
+## Functions
+
+```{r}
+read_excel2 <- function(x, ...) {
+  out <- readxl::read_excel(paste0(data_folder, x), skip = 1, ...)
+  out |>
+    names() |>
+    str_remove("^.*\r*\n\\(") |>
+    str_remove("\\)") |>
+    str_replace("...12", "month") |>
+    str_replace("...13", "year") %>%
+    setNames(out, .)
+}
+```
+
+
+## Loading data
+
+```{r}
+dec22 <- read_excel2("20FL_CH1_001_06_Dec2022.xls")
+apr23 <- read_excel2("20FL_CH1_001_07_Apr2023.xlsx")
+```
+
