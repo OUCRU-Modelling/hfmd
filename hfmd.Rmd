@@ -15,13 +15,14 @@ knitr::opts_chunk$set(echo = TRUE)
 Data folder:
 
 ```{r}
-data_folder <- "~/Library/CloudStorage/OneDrive-OxfordUniversityClinicalResearchUnit/GitHub/OUCRU-Modelling/hfmd/"
+data_folder <- paste0("~/Library/CloudStorage/OneDrive-OxfordUniversityClinicalResearchUnit/",
+                      "GitHub/OUCRU-Modelling/hfmd/")
 ```
 
 
 ## Packages
 
-```{r}
+```{r message = FALSE}
 library(readxl)
 library(dplyr)
 library(stringr)
@@ -33,6 +34,8 @@ library(magrittr)
 
 
 ## Functions
+
+A function that reads the excel files:
 
 ```{r}
 read_excel2 <- function(x, ...) {
@@ -48,10 +51,30 @@ read_excel2 <- function(x, ...) {
 }
 ```
 
+A tuning of the `polygon()` function:
+
+```{r}
+polygon2 <- function(x, y1, y2, ...) {
+  polygon(c(x, rev(x)), c(y1, rev(y2)), ...)
+}
+```
+
+The function that performs a likelihood ratio test:
+
+```{r}
+lrt <- function(...) anova(..., test = "LRT")
+```
+
+A tuning of the `points()` function:
+
+```{r}
+points2 <- function(...) points(..., pch = "|", cex = .5)
+```
+
 
 ## Loading data
 
-```{r}
+```{r, message = FALSE}
 sero <- data_folder |>
   dir() |> 
   map_dfr(read_excel2) |> 
@@ -64,18 +87,12 @@ sero <- data_folder |>
 ```
 
 
-## Analysis
+## A polynomial logistic model
+
+A function that computes a model's predictions:
 
 ```{r}
-y22 <- sero |> 
-  select(year, age, neutralization) |> 
-  filter(year == "2022")
-```
-
-A function that computes the model's predictions:
-
-```{r}
-predict2 <- function(x, ci = .95, le = 512) {
+predict2 <- function(x, ci = .95, le = 512, m = 100) {
   p <- (1 - ci) / 2
   
   link_inv <- x$family$linkinv
@@ -90,15 +107,82 @@ predict2 <- function(x, ci = .95, le = 512) {
     extract(c("fit", "se.fit")) %>%
     c(age = list(ages), .) |>
     as_tibble() |> 
-    mutate(lwr = link_inv(fit + qt(    p, n) * se.fit),
-           upr = link_inv(fit + qt(1 - p, n) * se.fit),
-           fit = link_inv(fit)) |> 
+    mutate(lwr = m * link_inv(fit + qt(    p, n) * se.fit),
+           upr = m * link_inv(fit + qt(1 - p, n) * se.fit),
+           fit = m * link_inv(fit)) |> 
     select(- se.fit)
 }
 ```
 
+A function that plots a model's predictions:
+
 ```{r}
-mod <- glm(neutralization ~ age, binomial, y22)
-predict2(mod)
+plot_predictions <- function(x, add = FALSE, col = 4, alpha = .2, lwd = 2, m = 100) {
+  with(x, {
+    if (! add) {
+      plot(NA, xlim = c(0, max(age)), ylim = c(0, m),
+           xlab = "age (year)", ylab = "seroprevalence (%)")
+    }
+    polygon2(age, lwr, upr, border = NA, col = adjustcolor(col, alpha))
+    lines(age, fit, col = col, lwd = lwd)
+  })
+}
 ```
 
+A function that generates a polynomial formula:
+
+```{r}
+make_formula <- function(degree) {
+  2:degree |>
+    map_chr(~ paste("I(age ^", .x, ")")) |> 
+    paste(collapse = " + ") %>%
+    paste("neutralization ~ age +", .) |> 
+    as.formula()
+}
+```
+
+A function that helps looking for the optimal degree of the polynomial:
+
+```{r}
+test_degrees <- function(year, degree) {
+  make_formula(degree) |> 
+    glm(binomial, filter(sero, year == as.character(year))) |> 
+    lrt()
+}
+```
+
+Looking for optimal degrees for the 2 years:
+
+```{r}
+test_degrees(2022, 5)
+test_degrees(2023, 5)
+```
+
+Looking for year effects:
+
+```{r}
+lrt(glm(neutralization ~ age * year + I(age ^2) * year, binomial, sero))
+```
+
+Best final model is then:
+
+```{r}
+m <- 100
+eps <- 1
+
+glm(neutralization ~ age + I(age ^2), binomial, filter(sero, year == "2022")) |> 
+  predict2() |> 
+  plot_predictions()
+
+glm(neutralization ~ age + I(age ^2), binomial, filter(sero, year == "2023")) |> 
+  predict2() |> 
+  plot_predictions(add = TRUE, col = 2)
+
+sero |>
+  filter(year == "2022") |> 
+  with(points2(age, m * neutralization + eps, col = 4))
+
+sero |>
+  filter(year == "2023") |> 
+  with(points2(age, m * neutralization - eps, col = 2))
+```
