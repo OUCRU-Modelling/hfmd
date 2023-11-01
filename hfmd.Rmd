@@ -27,6 +27,7 @@ library(dplyr)
 library(stringr)
 library(purrr)
 library(tidyr)
+library(lubridate)
 ```
 
 
@@ -58,6 +59,8 @@ sero <- data_folder |>
 ```{r}
 sero |> 
   mutate(across(Neutralization, ~ .x == "Yes")) |> 
-  replace_na(list(Neutralization = FALSE))
+  replace_na(list(Neutralization = FALSE)) |> 
+  mutate(collection_date = ymd(paste(year, month, `Day of taking blood sample`, sep = ":"))) |> 
+  select(- year, - month, - `Day of taking blood sample`)
 ```
 
