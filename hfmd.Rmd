@@ -28,6 +28,7 @@ library(stringr)
 library(purrr)
 library(tidyr)
 library(lubridate)
+library(magrittr)
 ```
 
 
@@ -53,14 +54,51 @@ read_excel2 <- function(x, ...) {
 ```{r}
 sero <- data_folder |>
   dir() |> 
-  map_dfr(read_excel2)
-```
-
-```{r}
-sero |> 
+  map_dfr(read_excel2) |> 
   mutate(across(Neutralization, ~ .x == "Yes")) |> 
   replace_na(list(Neutralization = FALSE)) |> 
   mutate(collection_date = ymd(paste(year, month, `Day of taking blood sample`, sep = ":"))) |> 
-  select(- year, - month, - `Day of taking blood sample`)
+  select(- `Day of taking blood sample`) |> 
+  mutate(across(`Serum dilution`, ~ str_remove(.x, "1:") |> as.integer())) |> 
+  rename(age = `Exact age calculated`, neutralization = Neutralization)
+```
+
+
+## Analysis
+
+```{r}
+y22 <- sero |> 
+  select(year, age, neutralization) |> 
+  filter(year == "2022")
+```
+
+A function that computes the model's predictions:
+
+```{r}
+predict2 <- function(x, ci = .95, le = 512) {
+  p <- (1 - ci) / 2
+  
+  link_inv <- x$family$linkinv
+  dataset <- x$data
+  n <- nrow(dataset) - length(x$coefficients)
+  age_range <- range(dataset$age)
+  
+  ages <- seq(age_range[1], age_range[2], le = le)
+  
+  x |> 
+    predict(data.frame(age = ages), se.fit = TRUE) |> 
+    extract(c("fit", "se.fit")) %>%
+    c(age = list(ages), .) |>
+    as_tibble() |> 
+    mutate(lwr = link_inv(fit + qt(    p, n) * se.fit),
+           upr = link_inv(fit + qt(1 - p, n) * se.fit),
+           fit = link_inv(fit)) |> 
+    select(- se.fit)
+}
+```
+
+```{r}
+mod <- glm(neutralization ~ age, binomial, y22)
+predict2(mod)
 ```
 
