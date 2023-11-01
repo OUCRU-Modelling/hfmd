@@ -185,4 +185,10 @@ sero |>
 sero |>
   filter(year == "2023") |> 
   with(points2(age, m * neutralization - eps, col = 2))
+
+legend("left", legend = c("Dec 2022", "Apr 2023"), lty = 1, lwd = 2,
+       col = c(4, 2), bty = "n")
 ```
+
+
+
