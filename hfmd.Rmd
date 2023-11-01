@@ -30,6 +30,7 @@ library(purrr)
 library(tidyr)
 library(lubridate)
 library(magrittr)
+library(mgcv)
 ```
 
 
@@ -69,6 +70,44 @@ A tuning of the `points()` function:
 
 ```{r}
 points2 <- function(...) points(..., pch = "|", cex = .5)
+```
+
+A tuning of the `mgcv::gam()` function:
+
+```{r}
+gam2 <- function(formula, family = gaussian(), data = list(), ...){
+  out <- mgcv::gam(formula, family, data, ...)
+  out$data <- data
+  out
+} 
+```
+
+A function that extracts model quality metrics from a `gam` object:
+
+```{r}
+quality <- function(x) {
+  tibble(deviance = deviance(x),
+         AIC      = AIC(x),
+         GCV      = x$gcv.ubre)
+}
+```
+
+A function that adds a column (in first position) to a tibble to inform about
+the type of smoothing that was applied:
+
+```{r}
+add_smooth_col <- function(x, s) {
+  bind_cols(tibble(smooth = s), x)
+}
+```
+
+A function that extracts p values from an `anova` object (run on a `gam` object):
+
+```{r}
+p_values <- function(x) {
+  tibble(year     = x$p.table[2, "Pr(>|z|)"],
+         "s(age)" = x$s.table[1, "p-value"])
+}
 ```
 
 
@@ -190,5 +229,80 @@ legend("left", legend = c("Dec 2022", "Apr 2023"), lty = 1, lwd = 2,
        col = c(4, 2), bty = "n")
 ```
 
+
+## Generalized additive model
+
+The list of smoothing options:
+
+```{r}
+smooths  <- c("tp", "ds", "cr", "cs", "cc", "bs", "ps", "cp", "re", "gp", "ad", "sz", "fs")
+```
+
+Looking at year and smoothed age effects for all the different types of
+smoothing available:
+
+```{r}
+smooths |> 
+  map_dfr(~ p_values(anova(gam(neutralization ~ s(age, bs = .x) + year,
+                               binomial, sero)))) |> 
+  add_smooth_col(smooths)
+```
+
+Looking at the model qualities of the different smootings options:
+
+```{r}
+smooths |>
+  map_dfr(~ quality(gam(neutralization ~ s(age, bs = .x) + year,
+                        binomial, sero))) |> 
+  add_smooth_col(smooths)
+```
+
+Models qualities for the 2 years separately:
+
+```{r}
+smooths |>
+  map_dfr(~ quality(gam(neutralization ~ s(age, bs = .x), binomial,
+                        filter(sero, year == "2022")))) |> 
+  add_smooth_col(smooths)
+
+smooths |>
+  map_dfr(~ quality(gam(neutralization ~ s(age, bs = .x), binomial,
+                        filter(sero, year == "2023")))) |> 
+  add_smooth_col(smooths)
+```
+
+The figure with a given smoothing:
+
+```{r}
+gam_figure <- function(s = "bs") {
+  m <- 100
+  eps <- 1
+  
+  gam2(neutralization ~ s(age, bs = s), binomial, filter(sero, year == "2022")) |>
+    predict2() |> 
+    plot_predictions()
+  
+  gam2(neutralization ~ s(age, bs = s), binomial, filter(sero, year == "2023")) |>
+    predict2() |> 
+    plot_predictions(add = TRUE, col = 2)
+  
+  sero |>
+    filter(year == "2022") |> 
+    with(points2(age, m * neutralization + eps, col = 4))
+  
+  sero |>
+    filter(year == "2023") |> 
+    with(points2(age, m * neutralization - eps, col = 2))
+  
+  legend("left", legend = c("Dec 2022", "Apr 2023"), lty = 1, lwd = 2,
+         col = c(4, 2), bty = "n")
+}
+```
+
+With B-spline:
+
+```{r}
+gam_figure(s = "bs")
+```
 
 
