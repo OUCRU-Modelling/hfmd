@@ -12,7 +12,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ## Constants
 
-Data folder:
+The data are in this folder:
 
 ```{r}
 data_folder <- paste0("~/Library/CloudStorage/OneDrive-OxfordUniversityClinicalResearchUnit/",
@@ -21,6 +21,10 @@ data_folder <- paste0("~/Library/CloudStorage/OneDrive-OxfordUniversityClinicalR
 
 
 ## Packages
+
+Make sure that all the package listed below are installed. If a package (e.g.
+`tidyr`) is not installed, install it by typing `install.packages("tidyr")` at
+the command line.
 
 ```{r message = FALSE}
 library(readxl)
@@ -305,4 +309,79 @@ With B-spline:
 gam_figure(s = "bs")
 ```
 
+## Modeling age and time at the same time
+
+```{r}
+sero |> 
+  group_by(collection_date) |> 
+  tally() |> 
+  plot(type = "h", xlab = "sample collection", ylab = "number of samples", col = 4)
+```
+
+```{r}
+sero |> 
+  select(age, neutralization, collection_date)
+```
+
+```{r}
+mod1 <- glm(neutralization ~ age * collection_date + I(age ^ 2) * collection_date,
+            binomial, mutate(sero, across(collection_date, as.numeric)))
+mod2 <- update(mod1, . ~ . +   age     * I(collection_date ^ 2))
+mod3 <- update(mod1, . ~ . + I(age ^2) * I(collection_date ^ 2))
+mod4 <- update(mod2, . ~ . + I(age ^2) * I(collection_date ^ 2))
+
+anova(mod1, mod2, mod4)
+anova(mod1, mod3, mod4)
+```
+
+
+A function that returns the names of the covariables from a formula:
+
+
+```{r}
+covariables <- function(formula) {
+  formula |> 
+    as.character() |> 
+    last() |> 
+    str_split("\\+ | \\* | \\:") |> 
+    first() |>
+    trimws() %>% 
+    grep("^I *\\(", ., invert = TRUE, value = TRUE) |> 
+    unique()
+}
+```
+
+```{r}
+predict3 <- function(x, ci = .95, le = 50, m = 100) {
+  p <- (1 - ci) / 2
+  
+  link_inv <- x$family$linkinv
+  dataset <- x$data
+  n <- nrow(dataset) - length(x$coefficients)
+  
+  new_data <- dataset[covariables(mod1$formula)] |> 
+    map(range) |> 
+    map(~ seq(.x[1], .x[2], le = le)) %>%
+    do.call(expand.grid, .)
+  
+  x |> 
+    predict(new_data, se.fit = TRUE) |> 
+    extract(c("fit", "se.fit")) |> 
+    as_tibble() %>%
+    bind_cols(new_data, .) |> 
+    mutate(lwr = m * link_inv(fit + qt(    p, n) * se.fit),
+           upr = m * link_inv(fit + qt(1 - p, n) * se.fit),
+           fit = m * link_inv(fit)) |> 
+    select(- se.fit)
+}
+```
+
+```{r}
+cvrbls <- covariables(mod1$formula)
+dataset <- mod1$data
+dataset[cvrbls] |> 
+  map(range) |> 
+  map(~ seq(.x[1], .x[2], le = le)) %>%
+  do.call(expand.grid, .)
+```
 
