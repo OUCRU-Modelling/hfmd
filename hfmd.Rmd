@@ -129,6 +129,24 @@ sero <- data_folder |>
   rename(age = `Exact age calculated`, neutralization = Neutralization)
 ```
 
+The data look like this:
+
+```{r}
+sero
+```
+
+and the next 6 variables:
+
+```{r}
+sero[-(1:7)]
+```
+
+and the last 2 variables:
+
+```{r}
+sero[-(1:13)]
+```
+
 
 ## A polynomial logistic model
 
@@ -187,12 +205,44 @@ make_formula <- function(degree) {
 A function that helps looking for the optimal degree of the polynomial:
 
 ```{r}
-test_degrees <- function(year, degree) {
+test_degrees <- function(yr, degree) {
+  dataset <- filter(sero, year == as.character(yr))
+  model <- glm(make_formula(degree), binomial, dataset)
+  lrt(model)
+}
+```
+
+```{r}
+test_degrees <- function(yr, degree) {
   make_formula(degree) |> 
-    glm(binomial, filter(sero, year == as.character(year))) |> 
+    glm(binomial, filter(sero, year == as.character(yr))) |> 
     lrt()
 }
 ```
+
+
+```{r}
+marc <- filter(sero, year == as.character(2022))
+m1 <- glm(make_formula(5), binomial, marc)
+
+marc <- filter(sero, year == as.character(2023))
+m2 <- glm(make_formula(5), binomial, marc)
+
+lrt(m1)
+lrt(m2)
+```
+
+```{r}
+fff <- function(yr = 2022) {
+  marc <- filter(sero, year == as.character(yr))
+  m1 <- glm(make_formula(5), binomial, marc)
+  lrt(m1)
+}
+
+fff()
+```
+
+
 
 Looking for optimal degrees for the 2 years:
 
@@ -376,7 +426,7 @@ predict3 <- function(x, ci = .95, le = 50, m = 100) {
 }
 ```
 
-```{r}
+```{r eval = FALSE}
 cvrbls <- covariables(mod1$formula)
 dataset <- mod1$data
 dataset[cvrbls] |> 

@@ -431,6 +431,58 @@ inform about the type of smoothing that was applied:</p>
   select(- `Day of taking blood sample`) |&gt; 
   mutate(across(`Serum dilution`, ~ str_remove(.x, &quot;1:&quot;) |&gt; as.integer())) |&gt; 
   rename(age = `Exact age calculated`, neutralization = Neutralization)</code></pre>
+<p>The data look like this:</p>
+<pre class="r"><code>sero</code></pre>
+<pre><code>## # A tibble: 150 × 15
+##    Participant_No Province Hospital_name Site_code Collection_No Sample_ID      
+##    &lt;chr&gt;          &lt;chr&gt;    &lt;chr&gt;         &lt;chr&gt;     &lt;chr&gt;         &lt;chr&gt;          
+##  1 0001           HCMC     BV Nhi đồng 1 001       06            20FL-001-060001
+##  2 0002           HCMC     BV Nhi đồng 1 001       06            20FL-001-060002
+##  3 0003           HCMC     BV Nhi đồng 1 001       06            20FL-001-060003
+##  4 0004           HCMC     BV Nhi đồng 1 001       06            20FL-001-060004
+##  5 0005           HCMC     BV Nhi đồng 1 001       06            20FL-001-060005
+##  6 0006           HCMC     BV Nhi đồng 1 001       06            20FL-001-060006
+##  7 0007           HCMC     BV Nhi đồng 1 001       06            20FL-001-060007
+##  8 0008           HCMC     BV Nhi đồng 1 001       06            20FL-001-060008
+##  9 0009           HCMC     BV Nhi đồng 1 001       06            20FL-001-060009
+## 10 0010           HCMC     BV Nhi đồng 1 001       06            20FL-001-060010
+## # ℹ 140 more rows
+## # ℹ 9 more variables: `Serum/plasma` &lt;chr&gt;, Age_group &lt;chr&gt;,
+## #   `Age labelled on tubes` &lt;chr&gt;, age &lt;dbl&gt;, month &lt;chr&gt;, year &lt;chr&gt;,
+## #   `Serum dilution` &lt;int&gt;, neutralization &lt;lgl&gt;, collection_date &lt;date&gt;</code></pre>
+<p>and the next 6 variables:</p>
+<pre class="r"><code>sero[-(1:7)]</code></pre>
+<pre><code>## # A tibble: 150 × 8
+##    Age_group `Age labelled on tubes`    age month year  `Serum dilution`
+##    &lt;chr&gt;     &lt;chr&gt;                    &lt;dbl&gt; &lt;chr&gt; &lt;chr&gt;            &lt;int&gt;
+##  1 0≤ &amp; &lt;1   0                       0.370  12    2022                NA
+##  2 0≤ &amp; &lt;1   0                       0.332  12    2022                NA
+##  3 0≤ &amp; &lt;1   0                       0.0767 1     2023                NA
+##  4 0≤ &amp; &lt;1   0                       0.438  12    2022                NA
+##  5 0≤ &amp; &lt;1   0                       0.932  1     2023                NA
+##  6 1≤ &amp; &lt;2   1                       1.96   12    2022                16
+##  7 1≤ &amp; &lt;2   1                       1.40   12    2022                NA
+##  8 1≤ &amp; &lt;2   1                       1.07   12    2022                NA
+##  9 1≤ &amp; &lt;2   1                       1.71   12    2022                NA
+## 10 1≤ &amp; &lt;2   1                       1.92   12    2022                NA
+## # ℹ 140 more rows
+## # ℹ 2 more variables: neutralization &lt;lgl&gt;, collection_date &lt;date&gt;</code></pre>
+<p>and the last 2 variables:</p>
+<pre class="r"><code>sero[-(1:13)]</code></pre>
+<pre><code>## # A tibble: 150 × 2
+##    neutralization collection_date
+##    &lt;lgl&gt;          &lt;date&gt;         
+##  1 FALSE          2022-12-28     
+##  2 FALSE          2022-12-27     
+##  3 FALSE          2023-01-04     
+##  4 FALSE          2022-12-27     
+##  5 FALSE          2023-01-03     
+##  6 TRUE           2022-12-26     
+##  7 FALSE          2022-12-26     
+##  8 FALSE          2022-12-27     
+##  9 FALSE          2022-12-06     
+## 10 FALSE          2022-12-27     
+## # ℹ 140 more rows</code></pre>
 </div>
 <div id="a-polynomial-logistic-model" class="section level2">
 <h2>A polynomial logistic model</h2>
@@ -738,6 +790,46 @@ anova(mod1, mod2, mod4)</code></pre>
 ## 1       144     166.06            
 ## 2       142     165.67  2  0.39438
 ## 3       141     165.52  1  0.14523</code></pre>
+<p>A function that returns the names of the covariables from a
+formula:</p>
+<pre class="r"><code>covariables &lt;- function(formula) {
+  formula |&gt; 
+    as.character() |&gt; 
+    last() |&gt; 
+    str_split(&quot;\\+ | \\* | \\:&quot;) |&gt; 
+    first() |&gt;
+    trimws() %&gt;% 
+    grep(&quot;^I *\\(&quot;, ., invert = TRUE, value = TRUE) |&gt; 
+    unique()
+}</code></pre>
+<pre class="r"><code>predict3 &lt;- function(x, ci = .95, le = 50, m = 100) {
+  p &lt;- (1 - ci) / 2
+  
+  link_inv &lt;- x$family$linkinv
+  dataset &lt;- x$data
+  n &lt;- nrow(dataset) - length(x$coefficients)
+  
+  new_data &lt;- dataset[covariables(mod1$formula)] |&gt; 
+    map(range) |&gt; 
+    map(~ seq(.x[1], .x[2], le = le)) %&gt;%
+    do.call(expand.grid, .)
+  
+  x |&gt; 
+    predict(new_data, se.fit = TRUE) |&gt; 
+    extract(c(&quot;fit&quot;, &quot;se.fit&quot;)) |&gt; 
+    as_tibble() %&gt;%
+    bind_cols(new_data, .) |&gt; 
+    mutate(lwr = m * link_inv(fit + qt(    p, n) * se.fit),
+           upr = m * link_inv(fit + qt(1 - p, n) * se.fit),
+           fit = m * link_inv(fit)) |&gt; 
+    select(- se.fit)
+}</code></pre>
+<pre class="r"><code>cvrbls &lt;- covariables(mod1$formula)
+dataset &lt;- mod1$data
+dataset[cvrbls] |&gt; 
+  map(range) |&gt; 
+  map(~ seq(.x[1], .x[2], le = le)) %&gt;%
+  do.call(expand.grid, .)</code></pre>
 </div>
 
 
