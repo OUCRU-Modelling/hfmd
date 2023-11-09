@@ -15,8 +15,8 @@ knitr::opts_chunk$set(echo = TRUE)
 The data are in this folder:
 
 ```{r}
-data_folder <- paste0("~/Library/CloudStorage/OneDrive-OxfordUniversityClinicalResearchUnit/",
-                      "GitHub/OUCRU-Modelling/hfmd/")
+oned <- "~/Library/CloudStorage/OneDrive-OxfordUniversityClinicalResearchUnit/"
+data_folder <- paste0(oned, "GitHub/OUCRU-Modelling/hfmd/")
 ```
 
 
@@ -105,7 +105,8 @@ add_smooth_col <- function(x, s) {
 }
 ```
 
-A function that extracts p values from an `anova` object (run on a `gam` object):
+A function that extracts p values from an `anova` object (run on a `gam`
+object):
 
 ```{r}
 p_values <- function(x) {
@@ -123,7 +124,8 @@ sero <- data_folder |>
   map_dfr(read_excel2) |> 
   mutate(across(Neutralization, ~ .x == "Yes")) |> 
   replace_na(list(Neutralization = FALSE)) |> 
-  mutate(collection_date = ymd(paste(year, month, `Day of taking blood sample`, sep = ":"))) |> 
+  mutate(collection_date =
+           ymd(paste(year, month, `Day of taking blood sample`, sep = ":"))) |> 
   select(- `Day of taking blood sample`) |> 
   mutate(across(`Serum dilution`, ~ str_remove(.x, "1:") |> as.integer())) |> 
   rename(age = `Exact age calculated`, neutralization = Neutralization)
@@ -178,7 +180,8 @@ predict2 <- function(x, ci = .95, le = 512, m = 100) {
 A function that plots a model's predictions:
 
 ```{r}
-plot_predictions <- function(x, add = FALSE, col = 4, alpha = .2, lwd = 2, m = 100) {
+plot_predictions <- function(x, add = FALSE, col = 4, alpha = .2, lwd = 2,
+                             m = 100) {
   with(x, {
     if (! add) {
       plot(NA, xlim = c(0, max(age)), ylim = c(0, m),
@@ -206,43 +209,12 @@ A function that helps looking for the optimal degree of the polynomial:
 
 ```{r}
 test_degrees <- function(yr, degree) {
-  dataset <- filter(sero, year == as.character(yr))
-  model <- glm(make_formula(degree), binomial, dataset)
-  lrt(model)
-}
-```
-
-```{r}
-test_degrees <- function(yr, degree) {
-  make_formula(degree) |> 
+  degree |>
+    make_formula() |> 
     glm(binomial, filter(sero, year == as.character(yr))) |> 
     lrt()
 }
 ```
-
-
-```{r}
-marc <- filter(sero, year == as.character(2022))
-m1 <- glm(make_formula(5), binomial, marc)
-
-marc <- filter(sero, year == as.character(2023))
-m2 <- glm(make_formula(5), binomial, marc)
-
-lrt(m1)
-lrt(m2)
-```
-
-```{r}
-fff <- function(yr = 2022) {
-  marc <- filter(sero, year == as.character(yr))
-  m1 <- glm(make_formula(5), binomial, marc)
-  lrt(m1)
-}
-
-fff()
-```
-
-
 
 Looking for optimal degrees for the 2 years:
 
@@ -263,7 +235,7 @@ Best final model is then:
 m <- 100
 eps <- 1
 
-glm(neutralization ~ age + I(age ^2), binomial, filter(sero, year == "2022")) |> 
+glm(neutralization ~ age, binomial, filter(sero, year == "2022")) |> 
   predict2() |> 
   plot_predictions()
 
@@ -289,7 +261,8 @@ legend("left", legend = c("Dec 2022", "Apr 2023"), lty = 1, lwd = 2,
 The list of smoothing options:
 
 ```{r}
-smooths  <- c("tp", "ds", "cr", "cs", "cc", "bs", "ps", "cp", "re", "gp", "ad", "sz", "fs")
+smooths  <- c("tp", "ds", "cr", "cs", "cc", "bs", "ps", "cp", "re", "gp", "ad",
+              "sz", "fs")
 ```
 
 Looking at year and smoothed age effects for all the different types of
@@ -332,11 +305,13 @@ gam_figure <- function(s = "bs") {
   m <- 100
   eps <- 1
   
-  gam2(neutralization ~ s(age, bs = s), binomial, filter(sero, year == "2022")) |>
+  gam2(neutralization ~ s(age, bs = s), binomial,
+       filter(sero, year == "2022")) |>
     predict2() |> 
     plot_predictions()
   
-  gam2(neutralization ~ s(age, bs = s), binomial, filter(sero, year == "2023")) |>
+  gam2(neutralization ~ s(age, bs = s), binomial,
+       filter(sero, year == "2023")) |>
     predict2() |> 
     plot_predictions(add = TRUE, col = 2)
   
@@ -365,7 +340,8 @@ gam_figure(s = "bs")
 sero |> 
   group_by(collection_date) |> 
   tally() |> 
-  plot(type = "h", xlab = "sample collection", ylab = "number of samples", col = 4)
+  plot(type = "h", xlab = "sample collection", ylab = "number of samples",
+       col = 4)
 ```
 
 ```{r}
@@ -374,8 +350,9 @@ sero |>
 ```
 
 ```{r}
-mod1 <- glm(neutralization ~ age * collection_date + I(age ^ 2) * collection_date,
-            binomial, mutate(sero, across(collection_date, as.numeric)))
+mod1 <- glm(neutralization ~ age * collection_date +
+              I(age ^ 2) * collection_date, binomial,
+            mutate(sero, across(collection_date, as.numeric)))
 mod2 <- update(mod1, . ~ . +   age     * I(collection_date ^ 2))
 mod3 <- update(mod1, . ~ . + I(age ^2) * I(collection_date ^ 2))
 mod4 <- update(mod2, . ~ . + I(age ^2) * I(collection_date ^ 2))
