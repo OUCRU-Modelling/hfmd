@@ -6,7 +6,7 @@ editor_options:
 ---
 
 ```{r setup, include = FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = TRUE, cache = TRUE)
 ```
 
 
@@ -340,8 +340,8 @@ gam_figure(s = "bs")
 sero |> 
   group_by(collection_date) |> 
   tally() |> 
-  plot(type = "h", xlab = "sample collection", ylab = "number of samples",
-       col = 4)
+  plot(type = "h", xlab = "date of sample collection",
+       ylab = "number of samples", col = 4)
 ```
 
 ```{r}
@@ -361,11 +361,162 @@ anova(mod1, mod2, mod4)
 anova(mod1, mod3, mod4)
 ```
 
+```{r}
+x <- mod1
 
-A function that returns the names of the covariables from a formula:
+dataset <- x$data
+
+age_val <- c(.1, 1:14)
+collection_date_val <- seq(min(dataset$collection_date),
+                           max(dataset$collection_date))
+
+new_data <- expand.grid(age = age_val, collection_date = collection_date_val)
+
+prdcts <- cbind(new_data, fit = 100 * predict(x, new_data, "response")) |> 
+  as_tibble() |> 
+  arrange(collection_date) |> 
+  mutate(across(collection_date, as_date))
+
+prdcts |> 
+  filter(age == .1) |> 
+  with(plot(collection_date, fit, type = "l", lwd = 2, col = 4, ylim = c(0, 100),
+            xlab = "date of sample collection", ylab = "seroprevalence (%)"))
+
+walk(1:14, ~ prdcts |> 
+       filter(age == .x) |>
+       with(lines(collection_date, fit, lwd = 2, col = 4)))
+
+abline(h = 10 * 0:10, col = "lightgrey")
+```
+
+A 3-D version of it:
+
+```{r}
+x <- mod1
+
+dataset <- x$data
+
+age_val <- c(.1, 1:14)
+collection_date_val <- seq(min(dataset$collection_date),
+                           max(dataset$collection_date), le = 15)
+
+new_data <- expand.grid(age = age_val, collection_date = collection_date_val)
+
+prdcts <- cbind(new_data, fit = 100 * predict(x, new_data, "response")) |> 
+  as_tibble() |> 
+  arrange(collection_date) |> 
+  mutate(across(collection_date, as_date))
+
+with(prdcts,
+     persp(sort(unique(age)), sort(unique(collection_date)), matrix(fit, 15),
+           xlab = "age (years)", ylab = "time", zlab = "seroprevalence (%)",
+           zlim = c(0, 100), theta = 0, phi = 1 * 15, r = sqrt(3), d = 1,
+           ticktype = "detailed", border = 4, lwd = 2, axes = FALSE))
+
+with(prdcts,
+     persp(sort(unique(age)), sort(unique(collection_date)), matrix(fit, 15),
+           xlab = "age (years)", ylab = "time", zlab = "seroprevalence (%)",
+           zlim = c(0, 100), theta = 0, phi = 1 * 15, r = sqrt(3), d = 1,
+           ticktype = "detailed", border = 4, lwd = 2, axes = TRUE))
+```
+
+```{r}
+sero |> 
+  group_by(year, Age_group) |> 
+  summarise(n = n(), mean_age = mean(age)) |> 
+  arrange(year, mean_age) |> 
+  select(- mean_age) |> 
+  pivot_wider(names_from = year, values_from = n) |> 
+  mutate(Age_group = paste0("[", str_replace(Age_group, "≤ & <", ", "), "["))
+```
+
+
+## Quantitative analysis
+
+```{r}
+tmp <- sero |>
+  filter(neutralization) |> 
+  select(age, year, collection_date, `Serum dilution`) |> 
+  rename(dilution = `Serum dilution`) |> 
+  filter(! is.na(dilution))
+```
+
+```{r}
+tmp |> 
+  group_by(dilution) |> 
+  tally() |> 
+  mutate(dilution = log2(dilution)) |> 
+  with(barplot(n, col = 4))
+```
+
+```{r}
+tmp2 <- tmp |> 
+  mutate(dilution = log2(dilution))
+```
+
+```{r}
+with(tmp2, plot(age, dilution))
+```
 
 
 ```{r}
+lrt(glm(dilution ~ age + I(age^2) + I(age^3) + I(age^4), gaussian, tmp2))
+```
+
+```{r}
+lrt(glm(dilution ~ age*as.factor(year) + I(age^2)*as.factor(year), gaussian, tmp2))
+```
+
+```{r}
+model <- glm(dilution ~ age + as.factor(year), gaussian, tmp2)
+
+lrt(model)
+
+ages <- seq(min(tmp2$age), max(tmp2$age), le = 512)
+new_data <- data.frame(age = ages, year = 2022:2023)
+prdcts <- predict(model, new_data, se.fit = TRUE)
+
+prdcts <- as_tibble(prdcts[-3]) |> 
+  mutate(lwr = fit + qt(.025, nrow(tmp2) - 1) * se.fit,
+         upr = fit + qt(.975, nrow(tmp2) - 1) * se.fit)
+
+prdcts <- cbind(new_data, prdcts) |> 
+  as_tibble()
+
+plot(NA, xlim = c(0, 15), ylim = c(0, 10), xlab = "age (years)", ylab = "dilution")
+
+tmp2 |> 
+  filter(year == 2022) |> 
+  with(points(age, dilution, col = 4))
+
+tmp2 |> 
+  filter(year == 2023) |> 
+  with(points(age, dilution, col = 2))
+
+prdcts |> 
+  filter(year == 2022) |> 
+  with({
+    polygon2(age, lwr, upr, col = adjustcolor(4, .2), border = NA)
+    lines(age, fit, col = 4, lwd = 2)
+  })
+
+prdcts |> 
+  filter(year == 2023) |> 
+  with({
+    polygon2(age, lwr, upr, col = adjustcolor(2, .2), border = NA)
+    lines(age, fit, col = 2, lwd = 2)
+  })
+
+legend("topright", legend = c("Dec 2022", "Apr 2023"), lty = 1, lwd = 2,
+         col = c(4, 2), bty = "n")
+```
+
+
+
+## Reserve
+
+```{r include = FALSE, eval = FALSE}
+# A function that returns the names of the covariables from a formula:
 covariables <- function(formula) {
   formula |> 
     as.character() |> 
@@ -378,7 +529,7 @@ covariables <- function(formula) {
 }
 ```
 
-```{r}
+```{r include = FALSE, eval = FALSE}
 predict3 <- function(x, ci = .95, le = 50, m = 100) {
   p <- (1 - ci) / 2
   
@@ -403,7 +554,7 @@ predict3 <- function(x, ci = .95, le = 50, m = 100) {
 }
 ```
 
-```{r eval = FALSE}
+```{r include = FALSE, eval = FALSE}
 cvrbls <- covariables(mod1$formula)
 dataset <- mod1$data
 dataset[cvrbls] |> 
@@ -411,4 +562,5 @@ dataset[cvrbls] |>
   map(~ seq(.x[1], .x[2], le = le)) %>%
   do.call(expand.grid, .)
 ```
+
 
